@@ -8,6 +8,7 @@
    Step3HybridWLTC(; name, m, radius, k, Ti, tau_max, tau_brake, dv_wheel, engage_rpm, engage_width_rpm, lock_rpm, lock_width_rpm, N_locked, __overrides)
 
 
+
 Hands-on 05 step 3 starter: the hybrid fixture with the energy manager reading its measurements but
 commanding nothing yet, start/stop off and no torque-to-pedal map. Placing TorqueToPedal as
 `map`, wiring the manager's commands as the guide lists and setting `start_stop = true`
@@ -166,7 +167,7 @@ completes it to Lecture5.P2HybridWLTC.
   push!(__systems, @named kmh = VehicleSystemsComponents.Vehicle.ToKmPerHour(; __overrides = kmh_overrides))
   # Subcomponent powertrain of type VehicleSystemsComponents.Vehicle.P2Powertrain
   powertrain_overrides = __pop_subcomponent_overrides!(__overrides, "powertrain")
-  push!(__systems, @named powertrain = VehicleSystemsComponents.Vehicle.P2Powertrain(; speed_commanded=true, start_stop=false, position_start=Float64(0.0), engine_speed_start=Float64(0.0), __overrides = powertrain_overrides))
+  push!(__systems, @named powertrain = VehicleSystemsComponents.Vehicle.P2Powertrain(; speed_commanded=true, start_stop=true, position_start=Float64(0.0), engine_speed_start=Float64(0.0), __overrides = powertrain_overrides))
   # Subcomponent manager of type VehicleSystemsComponents.Vehicle.EnergyManager
   manager_overrides = __pop_subcomponent_overrides!(__overrides, "manager")
   push!(__systems, @named manager = VehicleSystemsComponents.Vehicle.EnergyManager(; mapped_limits=true, SoC_on=0.52, SoC_off=0.55, P_line_max=Float64(30000.0), __overrides = manager_overrides))
@@ -203,6 +204,9 @@ completes it to Lecture5.P2HybridWLTC.
   # Subcomponent unused_command of type BlockComponents.Sources.Constant
   unused_command_overrides = __pop_subcomponent_overrides!(__overrides, "unused_command")
   push!(__systems, @named unused_command = BlockComponents.Sources.Constant(; k=Float64(0.0), __overrides = unused_command_overrides))
+  # Subcomponent map of type VehicleSystemsComponents.Vehicle.TorqueToPedal
+  map_overrides = __pop_subcomponent_overrides!(__overrides, "map")
+  push!(__systems, @named map = VehicleSystemsComponents.Vehicle.TorqueToPedal(; __overrides = map_overrides))
 
   ### Check there are no unmatched overrides
   isempty(__overrides) || throw(ArgumentError("overrides: [$(join(keys(__overrides), ", "))] don't match names found in model. These names may exist in the model but could have been conditionally excluded. Override keys are dotted paths as written in Dyad source (e.g. inner.rate)."))
@@ -240,6 +244,7 @@ completes it to Lecture5.P2HybridWLTC.
 
   ### Equations
   push!(__eqs, manager.w_shaft ~ powertrain.variator.w_a)
+  push!(__eqs, line.P ~ manager.P_engine)
   push!(__eqs, demand_line.P ~ manager.P_drive)
   push!(__eqs, N_target ~ max(manager.engine_on * line.N + (1.0 - manager.engine_on) * demand_line.N, N_locked))
   push!(__eqs, powertrain.N_ref ~ N_target)
@@ -262,6 +267,12 @@ completes it to Lecture5.P2HybridWLTC.
   push!(__eqs, connect(powertrain.SoC, manager.SoC))
   push!(__eqs, connect(powertrain.engine_speed, manager.engine_speed))
   push!(__eqs, connect(powertrain.available_torque, manager.available_torque))
+  push!(__eqs, connect(manager.tau_engine, map.tau))
+  push!(__eqs, connect(powertrain.engine_speed, map.omega))
+  push!(__eqs, connect(map.pedal, powertrain.engine_pedal))
+  push!(__eqs, connect(manager.tau_engine, powertrain.engine_torque_ref))
+  push!(__eqs, connect(manager.engine_on, powertrain.engine_on))
+  push!(__eqs, connect(manager.tau_machine, powertrain.tau_ref))
   push!(__eqs, connect(powertrain.spline, differential.flange_b))
   push!(__eqs, connect(differential.flange_left, car.spin_fl))
   push!(__eqs, connect(differential.flange_right, car.spin_fr))
